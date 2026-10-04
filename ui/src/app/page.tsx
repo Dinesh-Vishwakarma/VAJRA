@@ -14,7 +14,7 @@ import VajraMap from '@/components/map/VajraMap';
 import MapControls from '@/components/map/MapControls';
 import MapLegend from '@/components/map/MapLegend';
 import { BENGALURU_RADAR_BOUNDS, RADAR_LAYER_ID, RADAR_SOURCE_ID } from '@/lib/mapbox';
-import { fetchRadarMetadata, RadarMetadata } from '@/lib/api';
+import { fetchRadarMetadata, RadarMetadata, getApiBaseUrl } from '@/lib/api';
 
 export interface CityWeatherItem {
   id: string;
@@ -829,21 +829,7 @@ export const CITIES_DATA: CityWeatherItem[] = [
 
 
 function getCleanApiBase(): string {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host !== 'localhost' && host !== '127.0.0.1') {
-      const pub = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-      if (pub && !pub.includes('localhost') && !pub.includes('127.0.0.1')) {
-        return pub.replace(/\/+$/, '');
-      }
-      return 'https://vajra-production-aad1.up.railway.app';
-    }
-  }
-  let raw = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim();
-  if (raw && !raw.startsWith('http://') && !raw.startsWith('https://')) {
-    raw = `https://${raw}`;
-  }
-  return raw.replace(/\/+$/, '');
+  return getApiBaseUrl();
 }
 
 const SPEED_DELAYS: Record<number, number> = {
@@ -1165,6 +1151,7 @@ export default function Dashboard() {
       <VajraMap
         onMapReady={handleMapReady}
         timeIdx={timeIdx}
+        isPlaying={isPlaying}
         stormCellsVisible={showStormCells}
         className="map-background"
       >

@@ -35,6 +35,7 @@ interface VajraMapProps {
   children?: React.ReactNode;
   timeIdx?: number;
   stormCellsVisible?: boolean;
+  isPlaying?: boolean;
 }
 
 export default function VajraMap({
@@ -44,6 +45,7 @@ export default function VajraMap({
   children,
   timeIdx = 0,
   stormCellsVisible = true,
+  isPlaying = false,
 }: VajraMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
@@ -642,6 +644,97 @@ export default function VajraMap({
       }
     }
   }, [stormCellsVisible, isMapLoaded]);
+
+  // Track followed storm cell and manual user gestures
+  const followedCellIdRef = useRef<string | null>(null);
+  const userInteractedRef = useRef<boolean>(false);
+
+  // When playback starts, re-enable camera follow mode
+  useEffect(() => {
+    if (isPlaying) {
+      userInteractedRef.current = false;
+    }
+  }, [isPlaying]);
+
+  // Listen to manual map gestures to temporarily disengage follow mode without fighting user
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isMapLoaded) return;
+
+    const onUserInteraction = (e: any) => {
+      if (e && e.originalEvent) {
+        userInteractedRef.current = true;
+      }
+    };
+
+    map.on('dragstart', onUserInteraction);
+    map.on('zoomstart', onUserInteraction);
+    map.on('rotatestart', onUserInteraction);
+    map.on('pitchstart', onUserInteraction);
+
+    return () => {
+      map.off('dragstart', onUserInteraction);
+      map.off('zoomstart', onUserInteraction);
+      map.off('rotatestart', onUserInteraction);
+      map.off('pitchstart', onUserInteraction);
+    };
+  }, [isMapLoaded]);
+
+  // Radar Playback Camera Follow: smoothly track the primary active storm cell centroid
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isMapLoaded || !isPlaying || userInteractedRef.current) return;
+
+    const safeIdx = Math.max(0, Math.min(17, Math.floor(timeIdx)));
+
+    const followActiveCell = (geoJsonData: any) => {
+      if (!geoJsonData?.features?.length) return;
+      const centroids = geoJsonData.features.filter(
+        (f: any) => f.properties?.feature_type === 'cell_centroid' && f.geometry?.type === 'Point'
+      );
+      if (!centroids.length) return;
+
+      // 1. Maintain existing tracked cell if present in current frame
+      let targetCell = centroids.find(
+        (f: any) => f.properties?.cell_id === followedCellIdRef.current
+      );
+
+      // 2. If lost or not yet acquired, pick the strongest cell by max_dbz
+      if (!targetCell) {
+        targetCell = centroids.reduce((best: any, current: any) => {
+          const bestDbz = Number(best?.properties?.max_dbz) || 0;
+          const currDbz = Number(current?.properties?.max_dbz) || 0;
+          return currDbz > bestDbz ? current : best;
+        }, centroids[0]);
+
+        if (targetCell?.properties?.cell_id) {
+          followedCellIdRef.current = targetCell.properties.cell_id;
+        }
+      }
+
+      const coords = targetCell.geometry.coordinates;
+      if (Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        // Smoothly ease camera to active storm centroid while preserving useful workstation zoom
+        map.easeTo({
+          center: [coords[0], coords[1]],
+          duration: 750,
+          essential: true,
+          easing: (t) => t * (2 - t),
+        });
+      }
+    };
+
+    if (manifestCacheRef.current && manifestCacheRef.current[safeIdx]) {
+      followActiveCell(manifestCacheRef.current[safeIdx]);
+    } else {
+      fetch(getRadarCellsUrl(safeIdx))
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) followActiveCell(data);
+        })
+        .catch(() => {});
+    }
+  }, [timeIdx, isPlaying, isMapLoaded]);
 
   return (
     <div

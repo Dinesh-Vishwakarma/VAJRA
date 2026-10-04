@@ -3,22 +3,44 @@
  * Connects Next.js frontend pages to FastAPI backend with graceful local fallbacks.
  */
 
+/**
+ * Normalizes and sanitizes backend API URLs against common configuration typos,
+ * such as accidental "NEXT_API_URL=" prefixes or duplicated protocols.
+ */
+export function sanitizeApiUrl(raw?: string): string {
+  if (!raw) return '';
+  let s = raw.trim();
+  // Strip accidental key prefixes e.g. "NEXT_API_URL=" or "NEXT_PUBLIC_API_URL="
+  s = s.replace(/^(NEXT_PUBLIC_API_URL|NEXT_API_URL|API_URL)\s*=\s*/i, '').trim();
+  // Strip accidental outer quotes
+  s = s.replace(/^["']|["']$/g, '').trim();
+  // Strip accidental protocol wrapping e.g. "https://NEXT_API_URL="
+  s = s.replace(/^https?:\/\/(NEXT_PUBLIC_API_URL|NEXT_API_URL|API_URL)\s*=\s*/i, '').trim();
+  
+  // Extract clean URL if valid protocol exists
+  const match = s.match(/(https?:\/\/[^\s"'`]+)/i);
+  if (match) {
+    s = match[1];
+  } else if (s && !s.startsWith('http://') && !s.startsWith('https://')) {
+    s = `https://${s}`;
+  }
+  return s.replace(/\/+$/, '');
+}
+
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host !== 'localhost' && host !== '127.0.0.1') {
-      const pub = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+      const pub = sanitizeApiUrl(process.env.NEXT_PUBLIC_API_URL);
       if (pub && !pub.includes('localhost') && !pub.includes('127.0.0.1')) {
-        return pub.replace(/\/+$/, '');
+        return pub;
       }
       return 'https://vajra-production-aad1.up.railway.app';
     }
   }
-  let raw = (process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim();
-  if (raw && !raw.startsWith('http://') && !raw.startsWith('https://')) {
-    raw = `https://${raw}`;
-  }
-  return raw.replace(/\/+$/, '');
+  const raw = sanitizeApiUrl(process.env.NEXT_API_URL || process.env.NEXT_PUBLIC_API_URL);
+  if (raw) return raw;
+  return 'http://localhost:8000';
 }
 
 // =============================================================================

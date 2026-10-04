@@ -11,9 +11,19 @@ if (fs.existsSync(envPath)) {
 }
 
 const sanitizeUrl = (val?: string) => {
-  if (!val) return val;
+  if (!val) return '';
   let s = val.trim();
-  if (s && !s.startsWith('http://') && !s.startsWith('https://')) {
+  // Strip accidental key prefixes e.g. "NEXT_API_URL=" or "NEXT_PUBLIC_API_URL="
+  s = s.replace(/^(NEXT_PUBLIC_API_URL|NEXT_API_URL|API_URL)\s*=\s*/i, '').trim();
+  // Strip accidental surrounding quotes
+  s = s.replace(/^["']|["']$/g, '').trim();
+  // Strip accidental protocol wrapping e.g. "https://NEXT_API_URL="
+  s = s.replace(/^https?:\/\/(NEXT_PUBLIC_API_URL|NEXT_API_URL|API_URL)\s*=\s*/i, '').trim();
+  // Extract clean URL if protocol is present
+  const match = s.match(/(https?:\/\/[^\s"'`]+)/i);
+  if (match) {
+    s = match[1];
+  } else if (s && !s.startsWith('http://') && !s.startsWith('https://')) {
     s = `https://${s}`;
   }
   return s.replace(/\/+$/, '');

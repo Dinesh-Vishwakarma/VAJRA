@@ -92,9 +92,9 @@ export const BENGALURU_COORDINATES: [number, number] = [77.5946, 12.9716];
  */
 export const VIEWPORT_3D = {
   center: BENGALURU_COORDINATES,
-  zoom: 11.0,
-  pitch: 50,
-  bearing: 15,
+  zoom: 10.6,
+  pitch: 20,
+  bearing: 0,
   minZoom: 4,
   maxZoom: 18,
   terrainExaggeration: 1.15,
