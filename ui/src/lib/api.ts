@@ -224,3 +224,84 @@ export async function fetchModelsInfo(): Promise<any> {
     return null;
   }
 }
+
+// =============================================================================
+// 7. RADAR METADATA & PROVIDER DISCLOSURE (PHASE 7)
+// =============================================================================
+export interface RadarMetadata {
+  source_type: string;
+  source_id: string;
+  provider_class: string;
+  synthetic_demo: boolean;
+  status_disclosure: string;
+  disclaimer: string;
+  frame_count: number;
+  interval_minutes: number;
+  temporal_range: {
+    start_offset_min: number;
+    end_offset_min: number;
+    timestamp_utc?: string;
+    timestamps_utc?: string[];
+  };
+
+  grid: {
+    width: number;
+    height: number;
+  };
+  units: string;
+  valid_range: {
+    min_dbz: number;
+    max_dbz: number;
+  };
+  nodata_value: number;
+  bounds: [number, number][];
+  spatial_resolution_km: {
+    dx: number;
+    dy: number;
+  };
+}
+
+export async function fetchRadarMetadata(): Promise<RadarMetadata | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/radar/metadata`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Backend unavailable, using default synthetic radar metadata fallback:', err);
+    return {
+      source_type: 'synthetic',
+      source_id: 'latest_forecast.npy',
+      provider_class: 'SyntheticRadarProvider',
+      synthetic_demo: true,
+      status_disclosure: 'SYNTHETIC DATA — DEMO ONLY',
+      disclaimer: 'Synthetic procedural Gaussian advection model. Not real observational radar.',
+      frame_count: 18,
+      interval_minutes: 5,
+      temporal_range: {
+        start_offset_min: 0,
+        end_offset_min: 85
+      },
+      grid: {
+        width: 40,
+        height: 40
+      },
+      units: 'dBZ',
+      valid_range: {
+        min_dbz: 0.0,
+        max_dbz: 65.0
+      },
+      nodata_value: -9999.0,
+      bounds: [
+        [77.3446, 13.1916],
+        [77.8446, 13.1916],
+        [77.8446, 12.7516],
+        [77.3446, 12.7516]
+      ],
+      spatial_resolution_km: {
+        dx: 1.3585,
+        dy: 1.2170
+      }
+    };
+  }
+}
+

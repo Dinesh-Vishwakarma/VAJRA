@@ -88,8 +88,10 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 data/temp/
+scratch/
 notebooks/.ipynb_checkpoints
 *.ipynb_checkpoints
+
 
 # -----------------------------------------------------------------------------
 # 7. IDE & OS Metadata

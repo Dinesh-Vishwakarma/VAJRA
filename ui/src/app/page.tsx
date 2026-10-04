@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type mapboxgl from 'mapbox-gl';
 import { 
   Search, AlertTriangle, Wind, Droplets, Activity, Settings, Clock, 
   CloudLightning, Terminal, Play, Pause, SkipBack, SkipForward, 
@@ -10,6 +10,11 @@ import {
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import { ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import VajraMap from '@/components/map/VajraMap';
+import MapControls from '@/components/map/MapControls';
+import MapLegend from '@/components/map/MapLegend';
+import { BENGALURU_RADAR_BOUNDS, RADAR_LAYER_ID, RADAR_SOURCE_ID } from '@/lib/mapbox';
+import { fetchRadarMetadata, RadarMetadata } from '@/lib/api';
 
 export interface CityWeatherItem {
   id: string;
@@ -822,19 +827,6 @@ export const CITIES_DATA: CityWeatherItem[] = [
   }
 ];
 
-function getCityRadarBounds(coords: [number, number]): [[number, number], [number, number], [number, number], [number, number]] {
-  const [lng, lat] = coords;
-  const dLng = 0.25;
-  const dLat = 0.22;
-  return [
-    [lng - dLng, lat + dLat], // Top left (lon, lat)
-    [lng + dLng, lat + dLat], // Top right
-    [lng + dLng, lat - dLat], // Bottom right
-    [lng - dLng, lat - dLat]  // Bottom left
-  ];
-}
-
-const RADAR_BOUNDS: [[number, number], [number, number], [number, number], [number, number]] = getCityRadarBounds([77.5946, 12.9716]);
 
 function getCleanApiBase(): string {
   if (typeof window !== 'undefined') {
@@ -854,130 +846,48 @@ function getCleanApiBase(): string {
   return raw.replace(/\/+$/, '');
 }
 
-function generateRadarFrame(timeStep: number): string {
-  if (typeof document === 'undefined') return '';
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-
-    const t = Math.max(0, Math.min(17, timeStep));
-    const progress = t / 17; // 0.0 (NW) to 1.0 (SE)
-
-    ctx.clearRect(0, 0, 512, 512);
-
-    const cx1 = 150 + progress * 215;
-    const cy1 = 135 + progress * 210;
-    const peakFactor = Math.max(0, 1 - Math.abs(progress - 0.45) * 1.8);
-    const r1 = 110 + Math.sin(progress * Math.PI) * 65;
-
-    // 1. Broad outer precipitation shield
-    const gradShield = ctx.createRadialGradient(cx1, cy1, 15, cx1, cy1, r1 * 1.25);
-    gradShield.addColorStop(0, 'rgba(0, 180, 255, 0.45)');
-    gradShield.addColorStop(0.7, 'rgba(0, 200, 255, 0.25)');
-    gradShield.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = gradShield;
-    ctx.beginPath();
-    ctx.arc(cx1, cy1, r1 * 1.25, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 2. Primary Convective Core
-    const grad1 = ctx.createRadialGradient(cx1, cy1, 6, cx1, cy1, r1);
-    if (peakFactor > 0.6) {
-      grad1.addColorStop(0, 'rgba(236, 72, 153, 0.96)');
-      grad1.addColorStop(0.18, 'rgba(220, 38, 38, 0.95)');
-    } else if (progress < 0.8) {
-      grad1.addColorStop(0, 'rgba(239, 68, 68, 0.92)');
-      grad1.addColorStop(0.20, 'rgba(249, 115, 22, 0.88)');
-    } else {
-      grad1.addColorStop(0, 'rgba(249, 115, 22, 0.75)');
-    }
-    grad1.addColorStop(0.32, 'rgba(249, 115, 22, 0.88)');
-    grad1.addColorStop(0.52, 'rgba(234, 179, 8, 0.82)');
-    grad1.addColorStop(0.75, 'rgba(34, 197, 94, 0.72)');
-    grad1.addColorStop(0.92, 'rgba(6, 182, 212, 0.50)');
-    grad1.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
-
-    ctx.fillStyle = grad1;
-    ctx.beginPath();
-    ctx.arc(cx1, cy1, r1, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 3. Secondary trailing convective cell
-    const angle = 2.2 - progress * 0.9;
-    const dist = 85 + Math.sin(progress * Math.PI) * 25;
-    const cx2 = cx1 + Math.cos(angle) * dist;
-    const cy2 = cy1 + Math.sin(angle) * dist;
-    const r2 = 60 + progress * 35;
-
-    const grad2 = ctx.createRadialGradient(cx2, cy2, 5, cx2, cy2, r2);
-    grad2.addColorStop(0, 'rgba(249, 115, 22, 0.85)');
-    grad2.addColorStop(0.35, 'rgba(234, 179, 8, 0.75)');
-    grad2.addColorStop(0.70, 'rgba(34, 197, 94, 0.60)');
-    grad2.addColorStop(0.92, 'rgba(6, 182, 212, 0.35)');
-    grad2.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
-
-    ctx.fillStyle = grad2;
-    ctx.beginPath();
-    ctx.arc(cx2, cy2, r2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 4. Inflow feeder band
-    ctx.save();
-    ctx.translate(cx1, cy1);
-    ctx.rotate(0.4 + progress * 0.6);
-    const grad3 = ctx.createRadialGradient(35, -25, 4, 35, -25, 80);
-    grad3.addColorStop(0, 'rgba(234, 179, 8, 0.65)');
-    grad3.addColorStop(0.5, 'rgba(34, 197, 94, 0.45)');
-    grad3.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad3;
-    ctx.beginPath();
-    ctx.ellipse(35, -25, 80, 38, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    return canvas.toDataURL('image/png');
-  } catch (e) {
-    return '';
-  }
-}
+const SPEED_DELAYS: Record<number, number> = {
+  0.5: 2000,
+  1: 1000,
+  2: 500,
+  4: 250,
+};
 
 export default function Dashboard() {
   const { theme } = useTheme();
   const [timeIdx, setTimeIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const windCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [isRadarLoading, setIsRadarLoading] = useState<boolean>(false);
+  const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const frameCacheRef = useRef<Map<number, string>>(new Map());
+  const activeRequestIdRef = useRef<number>(0);
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null);
+
+  // Clean up cached blob URLs on component unmount
+  useEffect(() => {
+    return () => {
+      frameCacheRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
+      });
+      frameCacheRef.current.clear();
+    };
+  }, []);
 
   // Active Selected City (defaults to Bengaluru)
   const [selectedCity, setSelectedCity] = useState<CityWeatherItem>(CITIES_DATA[0]);
-  const selectedCityRef = useRef<CityWeatherItem>(CITIES_DATA[0]);
-  selectedCityRef.current = selectedCity;
-  const [currentZoom, setCurrentZoom] = useState<number>(11.5);
+  const [currentZoom, setCurrentZoom] = useState<number>(11);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-
-  const radarFramesCacheRef = useRef<string[]>([]);
-  const timeIdxRef = useRef<number>(timeIdx);
-  timeIdxRef.current = timeIdx;
-
-  // Pre-generate all 18 frames into memory on mount
-  useEffect(() => {
-    const frames: string[] = [];
-    for (let i = 0; i <= 17; i++) {
-      frames.push(generateRadarFrame(i));
-    }
-    radarFramesCacheRef.current = frames;
-  }, []);
 
   const [precipitationData, setPrecipitationData] = useState(CITIES_DATA[0].precipitation);
   const [showTerminal, setShowTerminal] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const [mapLayerType, setMapLayerType] = useState<'radar' | 'satellite'>('radar');
+  const [showStormCells, setShowStormCells] = useState<boolean>(true);
 
   const [telemetry, setTelemetry] = useState({
     temp: CITIES_DATA[0].temp,
@@ -994,11 +904,28 @@ export default function Dashboard() {
   });
 
   const [alerts, setAlerts] = useState(CITIES_DATA[0].alerts);
+  const [radarMetadata, setRadarMetadata] = useState<RadarMetadata | null>(null);
   const API_BASE = getCleanApiBase();
-  const mapboxToken = (process.env.NEXT_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').trim();
+
+  // Phase 7: Dynamic retrieval of authoritative radar provider metadata
+  useEffect(() => {
+    let isMounted = true;
+    fetchRadarMetadata()
+      .then((meta) => {
+        if (isMounted && meta) {
+          setRadarMetadata(meta);
+        }
+      })
+      .catch((err) => {
+        console.warn('[VAJRA Radar] Provider metadata fetch error:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Function to select a city and smoothly fly the map to it
-  const handleSelectCity = (city: CityWeatherItem) => {
+  const handleSelectCity = useCallback((city: CityWeatherItem) => {
     setSelectedCity(city);
     setTelemetry({
       temp: city.temp,
@@ -1011,34 +938,52 @@ export default function Dashboard() {
     setPrecipitationData(city.precipitation);
     setAlerts(city.alerts);
 
-    // Dynamically project radar coverage over the selected city/locality
-    if (map.current) {
-      const source = map.current.getSource('radar') as mapboxgl.ImageSource | undefined;
-      if (source) {
-        const frameUrl = radarFramesCacheRef.current[timeIdxRef.current] || generateRadarFrame(timeIdxRef.current);
-        const bounds = getCityRadarBounds(city.coordinates);
-        try {
-          source.updateImage({
-            url: frameUrl,
-            coordinates: bounds
-          });
-        } catch (e) {
-          console.warn("Could not update radar coordinates:", e);
-        }
-      }
-
-      // Smoothly fly map to target city coordinates
-      const targetZoom = Math.max(map.current.getZoom(), city.minZoom >= 9 ? 11.5 : 9.5);
-      map.current.flyTo({
+    // Smoothly fly real map to target city coordinates
+    if (mapInstance) {
+      const targetZoom = Math.max(mapInstance.getZoom(), city.minZoom >= 9 ? 11.5 : 9.5);
+      mapInstance.flyTo({
         center: city.coordinates,
         zoom: targetZoom,
-        pitch: 55,
-        bearing: -15,
         essential: true,
-        duration: 1800
+        duration: 1500
       });
     }
-  };
+  }, [mapInstance]);
+
+  const handleSelectCityRef = useRef(handleSelectCity);
+  useEffect(() => {
+    handleSelectCityRef.current = handleSelectCity;
+  }, [handleSelectCity]);
+
+  // Wire up map ready and interaction with stable callback
+  const handleMapReady = useCallback((m: mapboxgl.Map) => {
+    setMapInstance(m);
+    setCurrentZoom(m.getZoom());
+
+    m.on('zoom', () => {
+      setCurrentZoom(m.getZoom());
+    });
+
+    // Map click handler to sample closest city in target sector
+    m.on('click', (e) => {
+      const clickLng = e.lngLat.lng;
+      const clickLat = e.lngLat.lat;
+
+      let closest = CITIES_DATA[0];
+      let minDist = Infinity;
+      CITIES_DATA.forEach(c => {
+        const d = Math.hypot(c.coordinates[0] - clickLng, c.coordinates[1] - clickLat);
+        if (d < minDist) {
+          minDist = d;
+          closest = c;
+        }
+      });
+
+      if (minDist < 0.8) {
+        handleSelectCityRef.current(closest);
+      }
+    });
+  }, []);
 
   // Terminal logging simulator
   useEffect(() => {
@@ -1071,273 +1016,138 @@ export default function Dashboard() {
     }
   }, [logs, showTerminal]);
 
-  // Mapbox Initialization and Markers Setup
-  useEffect(() => {
-    const token = mapboxToken;
-    if (!token || token === 'your_mapbox_token_here') return;
-
-    mapboxgl.accessToken = token;
-    if (map.current) return;
-
-    if (mapContainer.current) {
-      try {
-        console.log("Initializing Mapbox with token: ", token.substring(0, 10) + "...");
-        const m = new mapboxgl.Map({
-          container: mapContainer.current,
-          style: theme === 'dark' ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11',
-          center: [77.5946, 12.9716], // Bengaluru coordinates
-          zoom: 11.5,
-          pitch: 65,
-          bearing: -20,
-          antialias: true,
-          // Explicitly guarantee full interactive capabilities
-          interactive: true,
-          boxZoom: true,
-          dragRotate: true,
-          dragPan: true,
-          keyboard: true,
-          doubleClickZoom: true,
-          touchZoomRotate: true,
-          scrollZoom: true
+  // Helper to apply frame texture to Mapbox ImageSource
+  const applyFrameToMap = useCallback((url: string) => {
+    if (!mapInstance) return;
+    try {
+      const source = mapInstance.getSource(RADAR_SOURCE_ID) as mapboxgl.ImageSource | undefined;
+      if (source && typeof source.updateImage === 'function') {
+        source.updateImage({
+          url,
+          coordinates: BENGALURU_RADAR_BOUNDS,
         });
-
-        // Add 3D Navigation & Zoom Controls
-        m.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-        m.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
-
-        map.current = m;
-
-        m.on('load', () => {
-          console.log("Mapbox loaded successfully");
-
-          // Add 3D Terrain
-          m.addSource('mapbox-dem', {
-            'type': 'raster-dem',
-            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-            'tileSize': 512,
-            'maxzoom': 14
-          });
-          m.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-
-          // Add Sky Layer
-          m.addLayer({
-            'id': 'sky',
-            'type': 'sky',
-            'paint': {
-              'sky-type': 'atmosphere',
-              'sky-atmosphere-sun': [0.0, 0.0],
-              'sky-atmosphere-sun-intensity': 15
-            }
-          });
-
-          // Insert 3D buildings beneath symbols
-          const layers = m.getStyle()?.layers;
-          let labelLayerId;
-          if (layers) {
-            for (const layer of layers) {
-              if (layer.type === 'symbol' && layer.layout && (layer.layout as Record<string, any>)?.['text-field']) {
-                labelLayerId = layer.id;
-                break;
-              }
-            }
-          }
-
-          m.addLayer(
-            {
-              'id': 'add-3d-buildings',
-              'source': 'composite',
-              'source-layer': 'building',
-              'filter': ['==', 'extrude', 'true'],
-              'type': 'fill-extrusion',
-              'minzoom': 11,
-              'paint': {
-                'fill-extrusion-color': theme === 'dark' ? '#1f2937' : '#aaa',
-                'fill-extrusion-height': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  11,
-                  0,
-                  11.05,
-                  ['get', 'height']
-                ],
-                'fill-extrusion-base': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  11,
-                  0,
-                  11.05,
-                  ['get', 'min_height']
-                ],
-                'fill-extrusion-opacity': 0.8
-              }
-            },
-            labelLayerId
-          );
-
-          // Add radar source mapping the Bengaluru bounding box
-          const initialFrame = radarFramesCacheRef.current[timeIdx] || generateRadarFrame(timeIdx);
-          m.addSource('radar', {
-            type: 'image',
-            url: initialFrame,
-            coordinates: RADAR_BOUNDS
-          });
-
-          m.addLayer({
-            id: 'radar-layer',
-            type: 'raster',
-            source: 'radar',
-            paint: {
-              'raster-opacity': 0.78,
-              'raster-fade-duration': 0
-            }
-          });
-
-          // Update zoom ratio on every zoom step
-          m.on('zoom', () => {
-            setCurrentZoom(m.getZoom());
-          });
-
-          // Click anywhere on map to discover closest city or sample localized coordinate
-          m.on('click', (e) => {
-            const clickLng = e.lngLat.lng;
-            const clickLat = e.lngLat.lat;
-
-            // Find closest city in dataset
-            let closest = CITIES_DATA[0];
-            let minDist = Infinity;
-            CITIES_DATA.forEach(c => {
-              const d = Math.hypot(c.coordinates[0] - clickLng, c.coordinates[1] - clickLat);
-              if (d < minDist) {
-                minDist = d;
-                closest = c;
-              }
-            });
-
-            // If clicked near a known city (< 0.8 deg), select that city
-            if (minDist < 0.8) {
-              handleSelectCity(closest);
-            } else {
-              // Custom localized interpolation
-              setSelectedCity({
-                ...closest,
-                id: `loc-${clickLat.toFixed(2)}-${clickLng.toFixed(2)}`,
-                name: `Grid [${clickLat.toFixed(2)}°N, ${clickLng.toFixed(2)}°E]`,
-                state: 'Micro-Grid Sector',
-                coordinates: [clickLng, clickLat],
-                temp: parseFloat((24 + Math.random() * 8).toFixed(1)),
-                humidity: Math.floor(65 + Math.random() * 30),
-                wind: Math.floor(10 + Math.random() * 35),
-                aqi: Math.floor(45 + Math.random() * 80),
-                cape: Math.floor(800 + Math.random() * 2000),
-                windShear: Math.floor(15 + Math.random() * 45),
-                point1: `Radial Velocity: ${Math.floor(Math.random() * 25 - 12)} m/s Doppler shift detected`,
-                point2: `Convective Initiation: Localized moisture convergence +34 mm/hr`
-              });
-            }
-
-            // Add click pulse beacon
-            const beacon = new mapboxgl.Marker({ color: '#38bdf8' })
-              .setLngLat(e.lngLat)
-              .addTo(m);
-            setTimeout(() => beacon.remove(), 2200);
-          });
-        });
-
-        m.on('error', (e) => {
-          console.error("Mapbox Error:", e);
-        });
-      } catch (err) {
-        console.error("Failed to initialize Mapbox:", err);
       }
+    } catch (err) {
+      console.warn('[VAJRA Radar] ImageSource updateImage error:', err);
     }
+  }, [mapInstance]);
+
+  // Quietly prefetch adjacent frames into memory blob cache
+  const prefetchFrame = useCallback((targetIdx: number) => {
+    if (targetIdx < 0 || targetIdx > 17) return;
+    if (frameCacheRef.current.has(targetIdx)) return;
+
+    fetch(`${API_BASE}/api/radar/frame/${targetIdx}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (!frameCacheRef.current.has(targetIdx)) {
+          const objUrl = URL.createObjectURL(blob);
+          frameCacheRef.current.set(targetIdx, objUrl);
+        }
+      })
+      .catch(() => {
+        // Quietly ignore background prefetch errors
+      });
+  }, [API_BASE]);
+
+  // Playback timer with speed control and automatic boundary stop at frame 17
+  useEffect(() => {
+    if (playbackTimerRef.current) {
+      clearInterval(playbackTimerRef.current);
+      playbackTimerRef.current = null;
+    }
+
+    if (!isPlaying) return;
+
+    const delay = SPEED_DELAYS[playbackSpeed] || 1000;
+
+    playbackTimerRef.current = setInterval(() => {
+      setTimeIdx((prev) => {
+        if (prev >= 17) {
+          setIsPlaying(false);
+          return 17;
+        }
+        return prev + 1;
+      });
+    }, delay);
 
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
+      if (playbackTimerRef.current) {
+        clearInterval(playbackTimerRef.current);
+        playbackTimerRef.current = null;
       }
     };
-  }, [theme]);
+  }, [isPlaying, playbackSpeed]);
 
-  // Playback timer for auto-stepping through nowcast frames
+  // Update Mapbox radar raster overlay with in-memory caching & race-condition protection
   useEffect(() => {
-    if (!isPlaying) return;
-    const playTimer = setInterval(() => {
-      setTimeIdx((prev) => (prev >= 17 ? 0 : prev + 1));
-    }, 750);
-    return () => clearInterval(playTimer);
-  }, [isPlaying]);
+    if (!mapInstance) return;
 
-  // Synchronize radar overlay and telemetry whenever timeIdx changes
-  useEffect(() => {
-    timeIdxRef.current = timeIdx;
+    const currentReqId = ++activeRequestIdRef.current;
+    const targetIdx = Math.max(0, Math.min(17, Math.floor(timeIdx)));
 
-    if (map.current) {
-      const source = map.current.getSource('radar') as mapboxgl.ImageSource | undefined;
-      if (source) {
-        const frameUrl = radarFramesCacheRef.current[timeIdx] || generateRadarFrame(timeIdx);
-        if (frameUrl) {
-          try {
-            source.updateImage({
-              url: frameUrl,
-              coordinates: getCityRadarBounds(selectedCityRef.current.coordinates)
-            });
-          } catch (err) {
-            console.warn("Could not update radar frame image:", err);
-          }
-        }
-      }
+    // Fast path: cached blob in memory
+    if (frameCacheRef.current.has(targetIdx)) {
+      const cachedUrl = frameCacheRef.current.get(targetIdx)!;
+      applyFrameToMap(cachedUrl);
+      setIsRadarLoading(false);
+
+      // Prefetch adjacent frames
+      prefetchFrame(targetIdx + 1);
+      prefetchFrame(targetIdx - 1);
+      return;
     }
-  }, [timeIdx]);
 
-  // Wind Particles Overlay
-  useEffect(() => {
-    const canvas = windCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    // Cache miss: initiate network request with active loading state
+    setIsRadarLoading(true);
 
-    let animationFrameId: number;
-    const particleCount = 120;
-    const particles = Array.from({ length: particleCount }, () => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      speed: 1.2 + Math.random() * 2.2,
-      angle: 0.65 + Math.random() * 0.25,
-      life: 50 + Math.random() * 150
-    }));
+    fetch(`${API_BASE}/api/radar/frame/${targetIdx}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        // Race condition protection: Discard if newer request was dispatched while fetching
+        if (currentReqId !== activeRequestIdRef.current) {
+          return;
+        }
 
-    const renderWind = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.strokeStyle = theme === 'dark' ? 'rgba(120, 200, 255, 0.35)' : 'rgba(0, 100, 255, 0.25)';
-      ctx.lineWidth = 1.2;
-      ctx.lineCap = 'round';
-      
-      particles.forEach(p => {
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        p.x += Math.cos(p.angle) * p.speed * 2;
-        p.y += Math.sin(p.angle) * p.speed * 2;
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        
-        p.life -= 1;
-        if (p.life <= 0 || p.x > canvas.width || p.y > canvas.height || p.x < 0 || p.y < 0) {
-          p.x = Math.random() * canvas.width * 0.8;
-          p.y = Math.random() * canvas.height * 0.5;
-          p.life = 50 + Math.random() * 150;
+        const objUrl = URL.createObjectURL(blob);
+        frameCacheRef.current.set(targetIdx, objUrl);
+        applyFrameToMap(objUrl);
+        setIsRadarLoading(false);
+
+        // Prefetch adjacent frames
+        prefetchFrame(targetIdx + 1);
+        prefetchFrame(targetIdx - 1);
+      })
+      .catch((err) => {
+        if (currentReqId === activeRequestIdRef.current) {
+          console.warn(`[VAJRA Radar] Error loading frame ${targetIdx}:`, err);
+          applyFrameToMap(`${API_BASE}/api/radar/frame/${targetIdx}`);
+          setIsRadarLoading(false);
         }
       });
-      animationFrameId = requestAnimationFrame(renderWind);
-    };
-    renderWind();
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [theme]);
+  }, [timeIdx, mapInstance, API_BASE, applyFrameToMap, prefetchFrame]);
+
+  // Synchronize layer visibility when user switches between Radar and Satellite in top bar
+  useEffect(() => {
+    if (!mapInstance) return;
+    try {
+      if (mapInstance.getLayer(RADAR_LAYER_ID)) {
+        mapInstance.setLayoutProperty(
+          RADAR_LAYER_ID,
+          'visibility',
+          mapLayerType === 'radar' ? 'visible' : 'none'
+        );
+      }
+    } catch (err) {
+      console.warn('[VAJRA Map] Layer visibility toggle error:', err);
+    }
+  }, [mapLayerType, mapInstance]);
 
   const isSevere = alerts.some(a => a.level && a.level.toLowerCase().includes('severe'));
 
@@ -1351,24 +1161,69 @@ export default function Dashboard() {
 
   return (
     <div className={`dashboard-container ${isSevere ? 'threat-state-severe' : ''}`}>
-      {/* Real Interactive Mapbox Container */}
-      <div 
-        ref={mapContainer} 
-        className="map-background" 
-        style={{ width: '100%', height: '100%', position: 'absolute', background: '#0a0e17' }} 
-      />
-
-      {/* Wind Particles Overlay */}
-      <canvas 
-        ref={windCanvasRef} 
-        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 5 }} 
-      />
+      {/* Genuine Mapbox GL JS Base */}
+      <VajraMap
+        onMapReady={handleMapReady}
+        timeIdx={timeIdx}
+        stormCellsVisible={showStormCells}
+        className="map-background"
+      >
+        <MapControls
+          map={mapInstance}
+          stormCellsVisible={showStormCells}
+          onToggleStormCells={setShowStormCells}
+          style={{
+            position: 'absolute',
+            top: '95px',
+            left: '20px',
+          }}
+        />
+        <MapLegend
+          style={{
+            position: 'absolute',
+            bottom: '115px',
+            left: '20px',
+          }}
+          sourceDisclosure={radarMetadata?.status_disclosure ? (radarMetadata.synthetic_demo ? 'SYNTHETIC • DEMO' : radarMetadata.status_disclosure) : 'SYNTHETIC • DEMO'}
+          isSynthetic={radarMetadata ? radarMetadata.synthetic_demo : true}
+        />
+      </VajraMap>
 
       {/* Floating Top Bar */}
       <header className="glass-panel top-bar">
-        <div className="logo">
-          <h1>VAJRA</h1>
-          <span className="live-badge">LIVE {mapLayerType === 'radar' ? 'RADAR' : 'SATELLITE'} &bull; 0.5km RES</span>
+        <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div>
+            <h1>VAJRA</h1>
+            <span className="live-badge">{mapLayerType === 'radar' ? 'RADAR REFLECTIVITY' : 'SATELLITE FUSION'} &bull; 0.5km RES (SIMULATION)</span>
+          </div>
+
+          {/* Phase 7: Canonical Operational Data Source Indicator */}
+          <div 
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              paddingLeft: '10px',
+              borderLeft: '1px solid rgba(255, 255, 255, 0.15)',
+              marginLeft: '4px',
+            }}
+            title={radarMetadata?.disclaimer || "Synthetic procedural Gaussian advection model. Demo only."}
+          >
+            <span style={{ fontSize: '8px', letterSpacing: '0.6px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600, lineHeight: 1.1 }}>
+              DATA SOURCE
+            </span>
+            <span style={{ 
+              fontSize: '10px', 
+              color: radarMetadata?.synthetic_demo !== false ? '#fbbf24' : '#38bdf8', 
+              fontWeight: 700, 
+              letterSpacing: '0.4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: radarMetadata?.synthetic_demo !== false ? '#fbbf24' : '#22c55e', display: 'inline-block' }} />
+              {radarMetadata?.status_disclosure ? (radarMetadata.synthetic_demo ? 'SYNTHETIC • DEMO' : radarMetadata.status_disclosure) : 'SYNTHETIC • DEMO'}
+            </span>
+          </div>
         </div>
 
         {/* Interactive Search Container with Autocomplete Dropdown */}
@@ -1632,7 +1487,17 @@ export default function Dashboard() {
       <div className="glass-panel bottom-dock" style={{ zIndex: 30, display: 'flex', alignItems: 'center', gap: '16px' }}>
         <div className="timeline-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            onClick={() => setIsPlaying(!isPlaying)}
+            type="button"
+            onClick={() => {
+              if (isPlaying) {
+                setIsPlaying(false);
+              } else {
+                if (timeIdx >= 17) {
+                  setTimeIdx(0);
+                }
+                setIsPlaying(true);
+              }
+            }}
             style={{
               background: isPlaying ? 'var(--color-severe)' : 'var(--color-precip)',
               color: '#fff',
@@ -1648,13 +1513,17 @@ export default function Dashboard() {
               boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
               flexShrink: 0
             }}
-            title={isPlaying ? "Pause Radar Loop" : "Play Radar Loop"}
+            title={isPlaying ? "Pause Radar Playback" : "Play Radar Forecast Loop (T+0 → T+85)"}
           >
             {isPlaying ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: '2px' }} />}
           </button>
           
           <button
-            onClick={() => setTimeIdx((prev) => Math.max(0, prev - 1))}
+            type="button"
+            onClick={() => {
+              setIsPlaying(false);
+              setTimeIdx((prev) => Math.max(0, prev - 1));
+            }}
             style={{
               background: 'rgba(255,255,255,0.08)',
               color: 'var(--text-primary)',
@@ -1671,7 +1540,11 @@ export default function Dashboard() {
           </button>
 
           <button
-            onClick={() => setTimeIdx((prev) => Math.min(17, prev + 1))}
+            type="button"
+            onClick={() => {
+              setIsPlaying(false);
+              setTimeIdx((prev) => Math.min(17, prev + 1));
+            }}
             style={{
               background: 'rgba(255,255,255,0.08)',
               color: 'var(--text-primary)',
@@ -1687,21 +1560,62 @@ export default function Dashboard() {
             <SkipForward size={14} />
           </button>
 
+          {/* Compact Playback Speed Selector */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'rgba(255,255,255,0.06)',
+              borderRadius: '6px',
+              padding: '2px',
+              border: '1px solid var(--border-color)',
+              marginLeft: '2px',
+            }}
+            title="Playback Temporal Speed"
+          >
+            {[0.5, 1, 2, 4].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setPlaybackSpeed(s)}
+                style={{
+                  background: playbackSpeed === s ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                  color: playbackSpeed === s ? '#38bdf8' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 6px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {s}×
+              </button>
+            ))}
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
             <Clock size={16} />
-            <span style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>Forecast Horizon</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>Horizon</span>
           </div>
         </div>
 
         <div className="scrubber-container" style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, position: 'relative', zIndex: 35 }}>
-          <span className="time-label" style={{ fontWeight: 600, fontSize: '12px' }}>T+0m</span>
+          <span className="time-label" style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text-secondary)' }}>
+            {radarMetadata && !radarMetadata.synthetic_demo ? 'T+0m' : 'T+0 MIN'}
+          </span>
           <input
             type="range"
             min="0"
-            max="17"
+            max={String(Math.max(0, (radarMetadata?.frame_count || 18) - 1))}
             step="1"
-            value={timeIdx}
+            value={Math.min(timeIdx, Math.max(0, (radarMetadata?.frame_count || 18) - 1))}
+            onPointerDown={() => {
+              if (isPlaying) setIsPlaying(false);
+            }}
             onChange={(e) => {
+              if (isPlaying) setIsPlaying(false);
               const val = parseInt(e.target.value, 10);
               setTimeIdx(val);
             }}
@@ -1714,10 +1628,54 @@ export default function Dashboard() {
               touchAction: 'none'
             }}
           />
-          <span className="time-label" style={{ minWidth: '70px', fontWeight: 'bold', color: 'var(--color-precip)', fontSize: '14px', textAlign: 'right' }}>
-            T+{timeIdx * 5}m
+          <span className="time-label" style={{ minWidth: '75px', fontWeight: 'bold', color: 'var(--color-precip)', fontSize: '12px', textAlign: 'right' }}>
+            {radarMetadata && !radarMetadata.synthetic_demo
+              ? (radarMetadata.temporal_range.timestamps_utc?.[timeIdx]?.slice(11, 16) 
+                  ? `${radarMetadata.temporal_range.timestamps_utc[timeIdx].slice(11, 16)} UTC`
+                  : `T+${timeIdx * (radarMetadata.interval_minutes || 10)}m`)
+              : `T+${timeIdx * 5} MIN`}
           </span>
+
+          {/* Operational Radar Frame Status Badge with Updating Indicator */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 10px',
+              background: isRadarLoading ? 'rgba(245, 158, 11, 0.14)' : 'rgba(56, 189, 248, 0.12)',
+              border: isRadarLoading ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              color: isRadarLoading ? '#f59e0b' : '#38bdf8',
+              letterSpacing: '0.4px',
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+              transition: 'all 0.2s',
+            }}
+            title="Operational radar frame index and forecast offset"
+          >
+            <span>RADAR</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
+            <span>FRAME {String(timeIdx + 1).padStart(2, '0')}/{radarMetadata?.frame_count || 18}</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
+            <span>
+              {radarMetadata && !radarMetadata.synthetic_demo
+                ? (radarMetadata.temporal_range.timestamps_utc?.[timeIdx]?.slice(11, 16)
+                    ? `${radarMetadata.temporal_range.timestamps_utc[timeIdx].slice(11, 16)} UTC`
+                    : `T+${timeIdx * (radarMetadata.interval_minutes || 10)}m`)
+                : `T+${timeIdx * 5} MIN`}
+            </span>
+            {isRadarLoading && (
+              <>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
+                <span style={{ color: '#f59e0b' }}>UPDATING</span>
+              </>
+            )}
+          </div>
         </div>
+
       </div>
 
       {/* MLOps Floating Terminal Modal */}

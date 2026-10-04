@@ -145,19 +145,21 @@ app.add_middleware(
 # Color mapping function for radar reflectivity (0 to 65+ dBZ)
 def get_radar_color(dbz: float):
     if dbz < 10:
-        return (0, 0, 0, 0)           # Transparent
+        return (0, 0, 0, 0)           # Transparent (no echo / background)
     elif dbz < 20:
-        return (0, 255, 255, 120)     # Light cyan (very light rain)
+        return (0, 235, 235, 190)     # Crisp Cyan (10–20 dBZ: Weak echoes / light drizzle)
     elif dbz < 30:
-        return (0, 150, 255, 160)     # Moderate blue
+        return (30, 160, 255, 215)    # Cerulean Blue (20–30 dBZ: Light precipitation)
     elif dbz < 40:
-        return (0, 220, 0, 190)       # Green (moderate precipitation)
+        return (0, 225, 50, 230)      # Vivid Green (30–40 dBZ: Moderate precipitation)
     elif dbz < 50:
-        return (255, 230, 0, 210)     # Yellow (heavy precipitation)
+        return (255, 230, 0, 240)     # Pure Yellow (40–50 dBZ: Heavy precipitation)
     elif dbz < 60:
-        return (255, 130, 0, 230)     # Orange (severe storm / hail risk)
+        return (255, 125, 0, 245)     # Bright Orange (50–60 dBZ: Severe storm / hail risk)
+    elif dbz < 65:
+        return (255, 30, 30, 250)     # Intense Red (60–65 dBZ: Extreme convective core)
     else:
-        return (255, 0, 0, 245)       # Red (extreme convective core)
+        return (210, 0, 40, 255)      # Deep Crimson (65+ dBZ: Cloudburst / microburst)
 
 # =============================================================================
 # SCHEMAS
@@ -263,42 +265,159 @@ def get_nowcast():
         ]
     }
 
+@app.get("/api/radar/metadata")
+def get_radar_metadata():
+    """Returns metadata for the active radar data provider, including geometry, units, and source disclosure."""
+    try:
+        from src.services.radar_provider import get_radar_provider
+        return get_radar_provider().get_metadata()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch radar metadata: {str(e)}")
+
 @app.get("/api/radar/frame/{time_idx}")
 def get_radar_frame(time_idx: int):
-    """Generates and serves a 512x512 PNG radar reflectivity raster overlay."""
-    base_dir = get_base_dir()
-    forecast_path = os.path.join(base_dir, 'data', 'processed', 'latest_forecast.npy')
-    
+    """Generates and serves a 512x512 PNG radar reflectivity raster overlay from canonical RadarFrame."""
     def generate_empty_png():
         img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
         buf = io.BytesIO()
         img.save(buf, format='PNG')
         return Response(content=buf.getvalue(), media_type="image/png")
         
-    if not os.path.exists(forecast_path):
-        init_sample_forecast_if_missing()
-        
     try:
-        forecast_data = np.load(forecast_path)
-        idx = max(0, min(time_idx, forecast_data.shape[0] - 1))
-        frame = forecast_data[idx]
+        from src.services.radar_provider import get_radar_provider
+        provider = get_radar_provider()
+        total_frames = provider.get_frame_count()
+        idx = max(0, min(time_idx, total_frames - 1))
+        radar_frame = provider.get_frame(idx)
+        frame = radar_frame.get_valid_reflectivity()
         
-        h, w = frame.shape
-        img_data = np.zeros((h, w, 4), dtype=np.uint8)
+        # High-fidelity continuous meteorological field upsampling
+        # Bilinear interpolation of scalar dBZ field eliminates blockiness and dark edge fringes
+        im_scalar = Image.fromarray(frame).resize((512, 512), Image.Resampling.BILINEAR)
+        arr_f = np.array(im_scalar)
         
-        for i in range(h):
-            for j in range(w):
-                img_data[i, j] = get_radar_color(float(frame[i, j]))
-                
+        # Colorize the 512x512 continuous dBZ field using operational reflectivity scale
+        img_data = np.zeros((512, 512, 4), dtype=np.uint8)
+        img_data[(arr_f >= 10) & (arr_f < 20)] = [0, 235, 235, 190]   # 10–20 dBZ: Crisp Cyan
+        img_data[(arr_f >= 20) & (arr_f < 30)] = [30, 160, 255, 215]  # 20–30 dBZ: Cerulean Blue
+        img_data[(arr_f >= 30) & (arr_f < 40)] = [0, 225, 50, 230]   # 30–40 dBZ: Vivid Green
+        img_data[(arr_f >= 40) & (arr_f < 50)] = [255, 230, 0, 240]  # 40–50 dBZ: Pure Yellow
+        img_data[(arr_f >= 50) & (arr_f < 60)] = [255, 125, 0, 245]  # 50–60 dBZ: Bright Orange
+        img_data[(arr_f >= 60) & (arr_f < 65)] = [255, 30, 30, 250]   # 60–65 dBZ: Intense Red
+        img_data[arr_f >= 65] = [210, 0, 40, 255]                     # 65+ dBZ: Deep Crimson
+        
         img = Image.fromarray(img_data)
-        img = img.resize((512, 512), Image.Resampling.BILINEAR)
-        
         buf = io.BytesIO()
         img.save(buf, format='PNG')
         return Response(content=buf.getvalue(), media_type="image/png")
     except Exception as e:
         print(f"Error serving radar frame {time_idx}: {e}")
         return generate_empty_png()
+
+@app.get("/api/radar/real-sample/metadata")
+def get_real_sample_metadata():
+    """Returns metadata for the genuine IMD Chennai DWR Level-II historical radar sample (Phase 8B-1)."""
+    try:
+        from src.services.rainbow_volume_reader import IMDScientificRadarProvider
+        provider = IMDScientificRadarProvider()
+        return provider.get_metadata()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch real radar sample metadata: {str(e)}")
+
+@app.get("/api/radar/real-sample/frame")
+def get_real_sample_frame():
+    """Generates and serves a 512x512 PNG radar reflectivity raster overlay from genuine IMD Chennai Level-II data."""
+    try:
+        from src.services.rainbow_volume_reader import IMDScientificRadarProvider
+        provider = IMDScientificRadarProvider()
+        radar_frame = provider.get_frame(0)
+        frame = radar_frame.get_valid_reflectivity()
+        
+        im_scalar = Image.fromarray(frame).resize((512, 512), Image.Resampling.BILINEAR)
+        arr_f = np.array(im_scalar)
+        
+        img_data = np.zeros((512, 512, 4), dtype=np.uint8)
+        img_data[(arr_f >= 10) & (arr_f < 20)] = [0, 235, 235, 190]   # 10–20 dBZ: Crisp Cyan
+        img_data[(arr_f >= 20) & (arr_f < 30)] = [30, 160, 255, 215]  # 20–30 dBZ: Cerulean Blue
+        img_data[(arr_f >= 30) & (arr_f < 40)] = [0, 225, 50, 230]   # 30–40 dBZ: Vivid Green
+        img_data[(arr_f >= 40) & (arr_f < 50)] = [255, 230, 0, 240]  # 40–50 dBZ: Pure Yellow
+        img_data[(arr_f >= 50) & (arr_f < 60)] = [255, 125, 0, 245]  # 50–60 dBZ: Bright Orange
+        img_data[(arr_f >= 60) & (arr_f < 65)] = [255, 30, 30, 250]   # 60–65 dBZ: Intense Red
+        img_data[arr_f >= 65] = [210, 0, 40, 255]                     # 65+ dBZ: Deep Crimson
+        
+        img = Image.fromarray(img_data)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to render real radar sample: {str(e)}")
+
+@app.get("/api/radar/real-multiframe/metadata")
+def get_real_multiframe_metadata():
+    """Returns metadata for the genuine IMD Goa DWR 3-frame historical sequence (Phase 8B-2)."""
+    try:
+        from src.services.imd_netcdf_reader import IMDNetCDFRadarProvider
+        provider = IMDNetCDFRadarProvider()
+        return provider.get_metadata()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch multi-frame radar metadata: {str(e)}")
+
+@app.get("/api/radar/real-multiframe/frame/{time_idx}")
+def get_real_multiframe_frame(time_idx: int):
+    """Generates and serves a 512x512 PNG radar reflectivity raster overlay for multi-frame real Goa DWR scans."""
+    try:
+        from src.services.imd_netcdf_reader import IMDNetCDFRadarProvider
+        provider = IMDNetCDFRadarProvider()
+        total_frames = provider.get_frame_count()
+        idx = max(0, min(time_idx, total_frames - 1))
+        radar_frame = provider.get_frame(idx)
+        frame = radar_frame.get_valid_reflectivity()
+        
+        im_scalar = Image.fromarray(frame).resize((512, 512), Image.Resampling.BILINEAR)
+        arr_f = np.array(im_scalar)
+        
+        img_data = np.zeros((512, 512, 4), dtype=np.uint8)
+        img_data[(arr_f >= 10) & (arr_f < 20)] = [0, 235, 235, 190]   # 10–20 dBZ: Crisp Cyan
+        img_data[(arr_f >= 20) & (arr_f < 30)] = [30, 160, 255, 215]  # 20–30 dBZ: Cerulean Blue
+        img_data[(arr_f >= 30) & (arr_f < 40)] = [0, 225, 50, 230]   # 30–40 dBZ: Vivid Green
+        img_data[(arr_f >= 40) & (arr_f < 50)] = [255, 230, 0, 240]  # 40–50 dBZ: Pure Yellow
+        img_data[(arr_f >= 50) & (arr_f < 60)] = [255, 125, 0, 245]  # 50–60 dBZ: Bright Orange
+        img_data[(arr_f >= 60) & (arr_f < 65)] = [255, 30, 30, 250]   # 60–65 dBZ: Intense Red
+        img_data[arr_f >= 65] = [210, 0, 40, 255]                     # 65+ dBZ: Deep Crimson
+        
+        img = Image.fromarray(img_data)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to render multi-frame radar sample {time_idx}: {str(e)}")
+
+
+
+@app.get("/api/radar/cells/{time_idx}")
+def get_radar_cells_frame(time_idx: int):
+    """Returns the GeoJSON FeatureCollection of tracked storm cells for a given frame index."""
+    try:
+        from src.services.storm_tracking import storm_engine
+        return storm_engine.get_frame(time_idx=time_idx)
+    except Exception as e:
+        print(f"Error serving storm cells for frame {time_idx}: {e}")
+        return {
+            "type": "FeatureCollection",
+            "frame_idx": time_idx,
+            "cell_count": 0,
+            "features": []
+        }
+
+@app.get("/api/radar/cells")
+def get_radar_cells_manifest():
+    """Returns the precomputed 18-frame GeoJSON FeatureCollection manifest for client caching."""
+    try:
+        from src.services.storm_tracking import storm_engine
+        return storm_engine.get_manifest()
+    except Exception as e:
+        print(f"Error serving storm cells manifest: {e}")
+        return []
 
 @app.get("/api/telemetry/{lat}/{lon}")
 def get_sector_telemetry(lat: float, lon: float):
