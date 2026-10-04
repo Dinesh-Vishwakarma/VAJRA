@@ -61,18 +61,18 @@ export default function Navbar() {
           </h1>
           <span style={{
             fontSize: '10px',
-            background: 'rgba(239, 68, 68, 0.2)',
-            color: '#ff6b6b',
+            background: 'rgba(14, 165, 233, 0.15)',
+            color: '#38bdf8',
             padding: '3px 8px',
             borderRadius: '12px',
             fontWeight: 'bold',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
+            border: '1px solid rgba(14, 165, 233, 0.35)',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '4px'
           }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-            LIVE
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', display: 'inline-block' }} />
+            WORKSTATION DEMO
           </span>
         </Link>
       </div>

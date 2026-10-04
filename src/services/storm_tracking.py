@@ -34,16 +34,36 @@ MIN_CELL_PIXELS = 3
 MAX_ASSOCIATION_GATE_KM = 5.0
 FRAME_INTERVAL_MIN = 5.0
 
-def grid_to_geo(y: float, x: float) -> Tuple[float, float]:
-    """Convert continuous grid indices (y: row North->South, x: col West->East) to (lat, lon)."""
+def grid_to_geo(
+    y: float,
+    x: float,
+    bounds: Optional[List[Tuple[float, float]]] = None,
+    grid_h: int = GRID_H,
+    grid_w: int = GRID_W
+) -> Tuple[float, float]:
+    """
+    Convert continuous grid indices (y: row North->South, x: col West->East) to (lat, lon).
+    Accepts arbitrary geographic bounds [[NW_lon, NW_lat], ..., [SE_lon, SE_lat], ...].
+    If bounds are absent, preserves canonical Bengaluru bounds as default.
+    """
+    if bounds and len(bounds) >= 3:
+        lon_nw, lat_nw = bounds[0]
+        lon_se, lat_se = bounds[2]
+        lat_span = lat_nw - lat_se
+        lon_span = lon_se - lon_nw
+        lat = lat_nw - ((y + 0.5) / float(grid_h)) * lat_span
+        lon = lon_nw + ((x + 0.5) / float(grid_w)) * lon_span
+        return float(lat), float(lon)
     lat = 13.1916 - ((y + 0.5) / float(GRID_H)) * LAT_SPAN
     lon = 77.3446 + ((x + 0.5) / float(GRID_W)) * LON_SPAN
-    return lat, lon
+    return float(lat), float(lon)
 
 def geo_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> Tuple[float, float, float]:
-    """Calculate Euclidean flat-earth distance (km), d_lon (km), and d_lat (km) around 13°N."""
+    """Calculate Euclidean flat-earth distance (km), d_lon (km), and d_lat (km)."""
+    mid_lat = (lat1 + lat2) / 2.0
+    km_lon = KM_PER_DEG_LON if abs(mid_lat - 13.0) < 1.0 else 111.320 * float(np.cos(np.radians(mid_lat)))
     d_lat = (lat2 - lat1) * KM_PER_DEG_LAT
-    d_lon = (lon2 - lon1) * KM_PER_DEG_LON
+    d_lon = (lon2 - lon1) * km_lon
     return float(np.sqrt(d_lat**2 + d_lon**2)), float(d_lon), float(d_lat)
 
 def get_intensity_class(dbz: float) -> str:
@@ -59,10 +79,11 @@ def get_intensity_class(dbz: float) -> str:
 
 class StormTrack:
     """Represents a tracked convective cell across consecutive frames."""
-    def __init__(self, track_id: str, det: Dict[str, Any], frame_idx: int):
+    def __init__(self, track_id: str, det: Dict[str, Any], frame_idx: int, time_min: Optional[float] = None):
         self.track_id = track_id
         self.first_seen = frame_idx
         self.last_seen = frame_idx
+        self.last_time_min = float(time_min) if time_min is not None else float(frame_idx * FRAME_INTERVAL_MIN)
         self.lost_count = 0
         self.history: List[Dict[str, Any]] = []
         self.velocity_history: List[Tuple[float, float]] = [] # [(u_meas, v_meas), ...]
@@ -71,23 +92,29 @@ class StormTrack:
         self.speed_kmh = 0.0
         self.bearing_deg = 0.0
         self.status = "ACTIVE"
-        self.update(det, frame_idx)
+        self.update(det, frame_idx, time_min=time_min)
 
     def predict_next_pos(self) -> Tuple[float, float]:
-        """Extrapolate position 5 minutes ahead based on smoothed velocity."""
+        """Extrapolate position ahead based on smoothed velocity."""
         dt_hr = FRAME_INTERVAL_MIN / 60.0
         last_det = self.history[-1]
+        mid_lat = last_det['centroid_lat']
+        km_lon = KM_PER_DEG_LON if abs(mid_lat - 13.0) < 1.0 else 111.320 * float(np.cos(np.radians(mid_lat)))
         pred_lat = last_det['centroid_lat'] + (self.v_kmh * dt_hr) / KM_PER_DEG_LAT
-        pred_lon = last_det['centroid_lon'] + (self.u_kmh * dt_hr) / KM_PER_DEG_LON
+        pred_lon = last_det['centroid_lon'] + (self.u_kmh * dt_hr) / km_lon
         return pred_lat, pred_lon
 
-    def update(self, det: Dict[str, Any], frame_idx: int):
-        """Update track with new candidate detection."""
+    def update(self, det: Dict[str, Any], frame_idx: int, time_min: Optional[float] = None):
+        """Update track with new candidate detection using actual elapsed time."""
         lat, lon = det['centroid_lat'], det['centroid_lon']
         if len(self.history) > 0:
             last = self.history[-1]
-            dt_frames = frame_idx - self.last_seen
-            dt_hr = (dt_frames * FRAME_INTERVAL_MIN) / 60.0
+            if time_min is not None and hasattr(self, 'last_time_min') and self.last_time_min is not None:
+                dt_min = max(0.1, float(time_min - self.last_time_min))
+                dt_hr = dt_min / 60.0
+            else:
+                dt_frames = frame_idx - self.last_seen
+                dt_hr = (dt_frames * FRAME_INTERVAL_MIN) / 60.0
             
             _, d_lon_km, d_lat_km = geo_distance_km(last['centroid_lat'], last['centroid_lon'], lat, lon)
             u_meas = d_lon_km / dt_hr
@@ -117,6 +144,7 @@ class StormTrack:
             self.status = "GROWING"
             
         self.last_seen = frame_idx
+        self.last_time_min = float(time_min) if time_min is not None else float(frame_idx * FRAME_INTERVAL_MIN)
         self.lost_count = 0
         self.history.append(det)
 
@@ -195,11 +223,12 @@ class StormTrack:
                 [round(current_lon, 6), round(current_lat, 6)]
             ]
             
+        km_lon = KM_PER_DEG_LON if abs(current_lat - 13.0) < 1.0 else 111.320 * float(np.cos(np.radians(current_lat)))
         t15_lat = current_lat + (self.v_kmh * 0.25) / KM_PER_DEG_LAT
-        t15_lon = current_lon + (self.u_kmh * 0.25) / KM_PER_DEG_LON
+        t15_lon = current_lon + (self.u_kmh * 0.25) / km_lon
         
         t30_lat = current_lat + (self.v_kmh * 0.50) / KM_PER_DEG_LAT
-        t30_lon = current_lon + (self.u_kmh * 0.50) / KM_PER_DEG_LON
+        t30_lon = current_lon + (self.u_kmh * 0.50) / km_lon
         
         return [
             [round(current_lon, 6), round(current_lat, 6)],
@@ -209,20 +238,42 @@ class StormTrack:
 
 def generate_geodesic_circle(center_lon: float, center_lat: float, radius_km: float, num_pts: int = 32) -> List[List[float]]:
     """Generate smooth polygonal ring coordinates approximating a geodesic circle around a point."""
+    km_lon = KM_PER_DEG_LON if abs(center_lat - 13.0) < 1.0 else 111.320 * float(np.cos(np.radians(center_lat)))
     coords = []
     for i in range(num_pts):
         angle = (2.0 * np.pi * i) / float(num_pts)
         d_lat = (radius_km * np.cos(angle)) / KM_PER_DEG_LAT
-        d_lon = (radius_km * np.sin(angle)) / KM_PER_DEG_LON
+        d_lon = (radius_km * np.sin(angle)) / km_lon
         coords.append([round(center_lon + d_lon, 6), round(center_lat + d_lat, 6)])
     coords.append(coords[0]) # Close polygon ring
     return coords
 
-def extract_candidate_cells(frame: np.ndarray, frame_idx: int) -> List[Dict[str, Any]]:
+def extract_candidate_cells(
+    frame: np.ndarray,
+    frame_idx: int,
+    geographic_bounds: Optional[List[Tuple[float, float]]] = None,
+    spatial_resolution_km: Optional[Dict[str, float]] = None
+) -> List[Dict[str, Any]]:
     """Segment frame into candidate storm envelopes and sub-cell convective cores."""
     mask30 = frame >= ENVELOPE_THRESHOLD_DBZ
     labeled30, num_env = label(mask30, structure=np.ones((3,3)))
     detections: List[Dict[str, Any]] = []
+    
+    grid_h, grid_w = frame.shape
+    if spatial_resolution_km and "dx" in spatial_resolution_km and "dy" in spatial_resolution_km:
+        pixel_area_km2 = float(spatial_resolution_km["dx"] * spatial_resolution_km["dy"])
+    else:
+        pixel_area_km2 = PIXEL_AREA_KM2
+
+    if geographic_bounds and len(geographic_bounds) >= 3:
+        lon_nw, lat_nw = geographic_bounds[0]
+        lon_se, lat_se = geographic_bounds[2]
+        lat_span = lat_nw - lat_se
+        lon_span = lon_se - lon_nw
+    else:
+        lon_nw, lat_nw = 77.3446, 13.1916
+        lat_span = LAT_SPAN
+        lon_span = LON_SPAN
     
     for env_id in range(1, num_env + 1):
         env_pixels = np.argwhere(labeled30 == env_id)
@@ -263,18 +314,18 @@ def extract_candidate_cells(frame: np.ndarray, frame_idx: int) -> List[Dict[str,
             weights = frame[cell_pix[:, 0], cell_pix[:, 1]]
             cy = float(np.sum(cell_pix[:, 0] * weights) / np.sum(weights))
             cx = float(np.sum(cell_pix[:, 1] * weights) / np.sum(weights))
-            lat, lon = grid_to_geo(cy, cx)
+            lat, lon = grid_to_geo(cy, cx, bounds=geographic_bounds, grid_h=grid_h, grid_w=grid_w)
             max_dbz = float(np.max(weights))
             mean_dbz = float(np.mean(weights))
-            area_km2 = float(len(cell_pix) * PIXEL_AREA_KM2)
+            area_km2 = float(len(cell_pix) * pixel_area_km2)
             
             # Construct outer boundary polygon via ConvexHull
             geo_corners = []
             for py, px in cell_pix:
                 for dy in [0, 1]:
                     for dx in [0, 1]:
-                        c_lat = 13.1916 - ((py + dy) / float(GRID_H)) * LAT_SPAN
-                        c_lon = 77.3446 + ((px + dx) / float(GRID_W)) * LON_SPAN
+                        c_lat = lat_nw - ((py + dy) / float(grid_h)) * lat_span
+                        c_lon = lon_nw + ((px + dx) / float(grid_w)) * lon_span
                         geo_corners.append([c_lon, c_lat])
             geo_corners = np.unique(geo_corners, axis=0)
             
@@ -335,7 +386,16 @@ class StormTrackingEngine:
             radar_frame = provider.get_frame(t)
             frame = radar_frame.get_valid_reflectivity()
             time_offset = radar_frame.relative_time_min
-            detections = extract_candidate_cells(frame, t)
+            bounds = getattr(radar_frame, 'geographic_bounds', None)
+            spatial_res = getattr(radar_frame, 'spatial_resolution_km', None)
+            is_synthetic = getattr(radar_frame, 'synthetic_demo', True)
+            
+            detections = extract_candidate_cells(
+                frame,
+                t,
+                geographic_bounds=bounds,
+                spatial_resolution_km=spatial_res
+            )
             
             matched_dets = set()
             matched_tracks = set()
@@ -359,7 +419,7 @@ class StormTrackingEngine:
                     tr_idx, det_idx = np.unravel_index(np.argmin(cost_matrix), cost_matrix.shape)
                     track = active_tracks[tr_idx]
                     det = detections[det_idx]
-                    track.update(det, t)
+                    track.update(det, t, time_min=time_offset)
                     det['assigned_track'] = track
                     matched_tracks.add(track.track_id)
                     matched_dets.add(det_idx)
@@ -374,7 +434,7 @@ class StormTrackingEngine:
                 if det_idx not in matched_dets:
                     new_id = f"CELL-{next_track_num:02d}"
                     next_track_num += 1
-                    new_track = StormTrack(new_id, det, t)
+                    new_track = StormTrack(new_id, det, t, time_min=time_offset)
                     tracks.append(new_track)
                     det['assigned_track'] = new_track
                     
@@ -403,6 +463,8 @@ class StormTrackingEngine:
                     }
                 }
                 
+                source_id = getattr(radar_frame, 'source_id', 'RADAR')
+                disclaimer = "SYNTHETIC CELL TRACKING — DEMO ONLY" if is_synthetic else f"HISTORICAL {source_id} CELL TRACKING"
                 common_props = {
                     "cell_id": tr.track_id,
                     "frame_idx": t,
@@ -422,8 +484,8 @@ class StormTrackingEngine:
                     "confidence": confidence,
                     "motion_stability": stability,
                     "nowcast": nowcast_data,
-                    "synthetic_demo": True,
-                    "disclaimer": "SYNTHETIC CELL TRACKING — DEMO ONLY"
+                    "synthetic_demo": is_synthetic,
+                    "disclaimer": disclaimer
                 }
                 
                 # 1. Hull feature (Polygon)

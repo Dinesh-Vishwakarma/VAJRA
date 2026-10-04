@@ -110,11 +110,19 @@ export default function AviationPage() {
             onClick={loadAviationData}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
-            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Live METAR Sync
+            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Exercise METAR
           </button>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: current.alertLevel === 'Severe' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.15)', border: `1px solid ${current.alertLevel === 'Severe' ? '#ef4444' : '#10B981'}`, padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: current.alertLevel === 'Severe' ? '#ef4444' : '#10B981', fontWeight: 600 }}>
-            <Plane size={14} /> ATC Terminal Weather Radar Sync Active
+            <Plane size={14} /> ATC Terminal Weather • Scenario Demo
           </span>
+        </div>
+      </div>
+
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginBottom: '24px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>EXERCISE SCENARIO DATA — NOT FOR OPERATIONAL FLIGHT DISPATCH:</strong> METAR observations, microburst warnings, and runway shear alerts are offline historical/simulated exercise scenarios. No real-time AFTN/AMHS connection is active.
         </div>
       </div>
 

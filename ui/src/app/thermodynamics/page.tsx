@@ -13,7 +13,8 @@ import {
   AlertOctagon, 
   Layers, 
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { fetchSoundingProfile, fetchStationIndices } from '@/lib/api';
@@ -87,11 +88,19 @@ export default function ThermodynamicsPage() {
             onClick={loadSoundingData}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
-            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Live Radiosonde Sync
+            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Profile
           </button>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid var(--color-severe)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#ff6b6b', fontWeight: 600 }}>
-            <AlertOctagon size={14} /> Severe Convective Instability Active
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#fcd34d', fontWeight: 600 }}>
+            <AlertOctagon size={14} /> Climatological Profile • Demo Sounding
           </span>
+        </div>
+      </div>
+
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginBottom: '24px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>SYNTHETIC THERMODYNAMIC SOUNDING (DEMO):</strong> Atmospheric profile indices (SBCAPE 1,850 J/kg, PWAT 58.2 mm) and Skew-T levels are simulated climatological profiles representing severe convective environments. No live IMD radiosonde feed is connected.
         </div>
       </div>
 

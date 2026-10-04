@@ -12,9 +12,17 @@ export default function Alerts() {
       </Link>
       
       <h1>Active Alerts</h1>
-      <p style={{ color: 'var(--text-secondary)' }}>Live AI Nowcast Warnings for Bengaluru Urban / South Grid</p>
+      <p style={{ color: 'var(--text-secondary)' }}>Simulated Convective Warnings for Bengaluru Urban / South Grid (Exercise Scenario)</p>
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px' }}>
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginTop: '16px', marginBottom: '24px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>SIMULATED ALERT WORKSTATION:</strong> Severe convective alert cards represent demonstration scenarios triggered by synthetic radar forecast grids. Not for operational public warning.
+        </div>
+      </div>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
         <div className="alert-card severe glass-panel" style={{ padding: '24px' }}>
           <div className="alert-header">
             <CloudLightning size={24} color="var(--color-severe)" />

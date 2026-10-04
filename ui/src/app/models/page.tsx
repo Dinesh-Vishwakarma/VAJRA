@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { ArrowLeft, Cpu, Layers, GitMerge, Zap, Brain, Sparkles, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Cpu, Layers, GitMerge, Zap, Brain, Sparkles, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { fetchModelsInfo } from '@/lib/api';
 
 export default function ModelsPage() {
@@ -73,14 +73,22 @@ export default function ModelsPage() {
           >
             <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Specs
           </button>
-          <span style={{ fontSize: '12px', padding: '6px 12px', background: 'rgba(74, 144, 226, 0.2)', color: 'var(--color-clear)', borderRadius: '6px', fontWeight: 'bold' }}>
-            ONNX Runtime {runtime.onnxRuntimeVersion} &bull; {runtime.precision}
+          <span style={{ fontSize: '12px', padding: '6px 12px', background: 'rgba(167, 139, 250, 0.15)', color: '#c4b5fd', border: '1px solid rgba(167, 139, 250, 0.35)', borderRadius: '6px', fontWeight: 'bold' }}>
+            Concept Specification • Research Prototype
           </span>
         </div>
       </div>
 
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginTop: '20px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>RESEARCH ARCHITECTURE SPECIFICATION (TARGET CONCEPT):</strong> Multimodal deep networks (3D U-Net, ResNet-34, Cross-Attention) represent VAJRA's planned deep-learning roadmap. Active production runtime currently employs deterministic kinematic extrapolation and baseline tabular models.
+        </div>
+      </div>
+
       {/* Model Fusion Architecture Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginTop: '28px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginTop: '24px' }}>
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <Layers size={22} color="var(--color-precip)" />

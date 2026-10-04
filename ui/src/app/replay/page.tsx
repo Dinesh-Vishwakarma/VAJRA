@@ -14,7 +14,8 @@ import {
   TrendingUp, 
   MapPin, 
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { fetchReplayCase } from '@/lib/api';
@@ -97,11 +98,19 @@ export default function ReplayPage() {
             onClick={loadCaseData}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
-            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Case Data Sync
+            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Case
           </button>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3B82F6', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#60A5FA', fontWeight: 600 }}>
-            <Sparkles size={14} /> Historical Verification Engine Active
+            <Sparkles size={14} /> Historical Case Archive • Research Demo
           </span>
+        </div>
+      </div>
+
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginBottom: '24px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>HISTORICAL CASE STUDY ARCHIVE (RESEARCH RECONSTRUCTION):</strong> Event hydrographs and timeline progressions represent reconstructed meteorological scenarios for hindcast research. Genuine raw radar datasets are cataloged separately under the Phase 8B offline validation pipeline.
         </div>
       </div>
 

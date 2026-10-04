@@ -41,19 +41,20 @@
   }
 }
 
-.dark-theme {
-  --bg-app: #121212;
-  --bg-surface: #1E1E1E;
-  --border-color: #2D3748;
-  --text-primary: #F7FAFC;
-  --text-secondary: #A0AEC0;
-  --icon-color: #CBD5E0;
-  --color-clear: #81B3F7;
-  --color-warning: #FCD34D;
-  --color-severe: #FC8181;
-  --color-good: #6EE7B7;
-  --color-precip: #90CDF4;
-  --glass-bg: rgba(30, 30, 30, 0.7);
+.dark-theme, :root {
+  --bg-app: #080c14;
+  --bg-surface: rgba(13, 20, 36, 0.82);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --icon-color: #cbd5e1;
+  --color-clear: #38bdf8;
+  --color-warning: #f59e0b;
+  --color-severe: #ef4444;
+  --color-good: #10b981;
+  --color-precip: #0ea5e9;
+  --glass-bg: rgba(13, 20, 36, 0.82);
+  --glass-blur: blur(14px);
 }
 
 .light-theme {
@@ -77,14 +78,20 @@ html {
 }
 
 body {
-  background-color: var(--bg-app);
+  background-color: #070b12;
+  background-image: 
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(14, 165, 233, 0.12), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+  background-attachment: fixed;
   color: var(--text-primary);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin: 0;
   padding: 0;
   min-height: 100vh;
   overflow-x: hidden;
-  overflow-y: auto; /* Allow pages to scroll naturally */
+  overflow-y: auto;
 }
 
 /* Custom sleek scrollbar for entire website */
@@ -107,15 +114,15 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.2) rgba(10, 14, 23, 0.6);
 }
 
-/* Glassmorphism */
+/* Glassmorphism — Operational Meteorological GIS Standard */
 .glass-panel {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
-  transition: all 0.5s ease-in-out;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* Threat State Theming */

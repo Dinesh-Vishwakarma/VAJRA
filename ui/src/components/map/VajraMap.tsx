@@ -125,7 +125,7 @@ export default function VajraMap({
           if (!map.getSource(RADAR_SOURCE_ID)) {
             map.addSource(RADAR_SOURCE_ID, {
               type: 'image',
-              url: getRadarFrameUrl(0),
+              url: getRadarFrameUrl(timeIdx),
               coordinates: BENGALURU_RADAR_BOUNDS,
             });
           }
@@ -142,8 +142,8 @@ export default function VajraMap({
             };
 
             if (isStandardStyle) {
-              // In Mapbox Standard style, slot: 'middle' drapes over terrain DEM but below 3D objects and labels
-              radarLayerConfig.slot = 'middle';
+              // In Mapbox Standard style, slot: 'top' renders radar reflectivity above basemap and 3D buildings, below place labels
+              radarLayerConfig.slot = 'top';
               map.addLayer(radarLayerConfig);
             } else {
               // Fallback for dark-v11: place below symbol labels
@@ -578,6 +578,20 @@ export default function VajraMap({
         console.warn('[VajraMap] Failed to prefetch storm cells manifest:', err);
       });
   }, [isMapLoaded]);
+
+  // Synchronize radar reflectivity raster frame with timeIdx
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isMapLoaded) return;
+
+    const safeIdx = Math.max(0, Math.min(17, Math.floor(timeIdx)));
+    const radarSource = map.getSource(RADAR_SOURCE_ID) as mapboxgl.ImageSource | undefined;
+    if (radarSource && typeof radarSource.updateImage === 'function') {
+      radarSource.updateImage({
+        url: getRadarFrameUrl(safeIdx),
+      });
+    }
+  }, [timeIdx, isMapLoaded]);
 
   // Synchronize storm cells overlay with timeIdx
   useEffect(() => {

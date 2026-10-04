@@ -77,14 +77,22 @@ export default function Analytics() {
           >
             <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Benchmark
           </button>
-          <span style={{ fontSize: '12px', padding: '6px 12px', background: 'var(--color-good)', color: '#000', borderRadius: '6px', fontWeight: 'bold' }}>
-            Benchmark: {benchmarkName}
+          <span style={{ fontSize: '12px', padding: '6px 12px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '6px', fontWeight: 'bold' }}>
+            Synthetic Benchmark Suite
           </span>
         </div>
       </div>
 
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginTop: '20px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>RESEARCH BENCHMARK TESTBED (SIMULATION ONLY):</strong> Verification metrics (CSI {kpis.csi}, POD {kpis.pod}, FAR {kpis.far}) are derived from controlled synthetic simulation testbeds. Real-data operational accuracy remains limited as evaluated in Phase 8B-3 audit.
+        </div>
+      </div>
+
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '28px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginTop: '24px' }}>
         <div className="glass-panel" style={{ padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '13px' }}>
             <span>Critical Success Index (CSI)</span>
@@ -92,7 +100,7 @@ export default function Analytics() {
           </div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10B981', marginTop: '8px' }}>{kpis.csi}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            +82% higher skill floor than Eulerian persistence
+            Simulated testbed benchmark vs persistence
           </div>
         </div>
 
@@ -103,7 +111,7 @@ export default function Analytics() {
           </div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--color-precip)', marginTop: '8px' }}>{kpis.pod}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            High-sensitivity storm cell capture rate
+            Simulated storm cell capture rate
           </div>
         </div>
 
@@ -114,7 +122,7 @@ export default function Analytics() {
           </div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#F59E0B', marginTop: '8px' }}>{kpis.far}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Constrained by physics-informed thermodynamic filtering
+            Simulated thermodynamic threshold constraint
           </div>
         </div>
 

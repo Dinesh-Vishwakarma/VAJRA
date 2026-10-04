@@ -149,17 +149,25 @@ export default function DisasterOps() {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button 
             onClick={loadData}
-            title="Refresh Live Feeds"
+            title="Refresh Simulated Feeds"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '20px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
-            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Live API Sync
+            <RefreshCw size={13} className={isLoading ? 'spin-animation' : ''} /> Refresh Simulation
           </button>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid var(--color-severe)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#ff6b6b', fontWeight: 600 }}>
-            <Radio size={14} className="pulse-indicator" style={{ background: '#ef4444' }} /> NDRF Sector 4 Armed
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#ff6b6b', fontWeight: 600 }}>
+            <Radio size={14} className="pulse-indicator" style={{ background: '#ef4444' }} /> NDRF Protocol (Drill / Demo)
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10B981', padding: '6px 14px', borderRadius: '20px', fontSize: '12px', color: '#10B981', fontWeight: 600 }}>
-            <CheckCircle2 size={14} /> BBMP Flood Cells Online
+            <CheckCircle2 size={14} /> BBMP Flood Cells (Simulation)
           </span>
+        </div>
+      </div>
+
+      {/* Honest Data Status Banner */}
+      <div style={{ padding: '10px 16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', marginBottom: '24px', fontSize: '12px', color: '#bae6fd', display: 'flex', alignItems: 'center', gap: '10px', lineHeight: 1.5 }}>
+        <AlertTriangle size={16} className="shrink-0 text-sky-400" />
+        <div>
+          <strong style={{ color: '#38bdf8' }}>SIMULATION &amp; WORKSTATION DEMO:</strong> Ward-level waterlogging telemetry, pump states, and CAP v1.2 alerts are demonstration models calibrated against synthetic convective storm tracks. No live municipal dispatch is active.
         </div>
       </div>
 
@@ -184,7 +192,7 @@ export default function DisasterOps() {
             {wardData.filter(w => w.level === 'Critical').length} Wards
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Rainfall rate &gt;60 mm/hr detected
+            Simulated rainfall rate &gt;60 mm/hr
           </div>
         </div>
 
@@ -197,7 +205,7 @@ export default function DisasterOps() {
             {wardData[0]?.floodDepth || '1.4 m'}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Bellandur &amp; Silk Board underpasses
+            Bellandur &amp; Silk Board simulated runoff
           </div>
         </div>
 
@@ -210,20 +218,20 @@ export default function DisasterOps() {
             {wardData.reduce((acc, w) => acc + (w.pumpsActive || 0), 0)} / {wardData.reduce((acc, w) => acc + (w.pumpsTotal || 0), 0)} Active
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Automated telemetry connected
+            Simulated telemetry model
           </div>
         </div>
 
         <div className="glass-panel" style={{ padding: '20px' }}>
           <div style={{ color: 'var(--text-secondary)', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Early Warning Lead Time</span>
+            <span>Simulated Lead Time</span>
             <Radio size={18} color="var(--color-precip)" />
           </div>
           <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--color-precip)', marginTop: '6px' }}>
             +40 Mins
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Civil defense alert dispatched pre-surge
+            Demo scenario advance warning
           </div>
         </div>
       </div>
